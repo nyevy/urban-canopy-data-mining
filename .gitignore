@@ -1,3 +1,17 @@
+# Ignore all files in the data folder
+data/*
+
+# But don't ignore the .gitkeep file (this keeps the folder alive)
+!data/.gitkeep
+
+# Also ignore any temporary jupyter files
+.ipynb_checkpoints/
+
+# idea
+.idea/
+.ipynb_checkpoints/
+data/*.csv
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]

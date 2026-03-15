@@ -1,0 +1,12 @@
+# Data Wrangling
+pandas>=2.0.0
+numpy
+
+# Spatial Analysis & Mapping
+geopandas
+folium
+matplotlib
+seaborn
+
+# Helper for large Census CSVs
+pyarrow
