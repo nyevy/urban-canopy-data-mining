@@ -7,10 +7,6 @@ To determine if there is a statistically significant correlation between a neigh
 ## Setup & Installation
 
 1. **Clone the repository**:
-   ```bash
-   git clone <your-repo-link>
-   cd nyc-green-inequality
-   ```
 2. **Install dependencies**:
 
    ```bash
