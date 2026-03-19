@@ -1,6 +1,8 @@
 # Ignore all files in the data folder
 data/*
 
+exploration.html
+
 # But don't ignore the .gitkeep file (this keeps the folder alive)
 !data/.gitkeep
 
