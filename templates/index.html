@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html>
+<head>
+    
+    <meta http-equiv="content-type" content="text/html; charset=UTF-8" />
+    <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.3/dist/leaflet.js"></script>
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Leaflet.awesome-markers/2.0.2/leaflet.awesome-markers.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.3/dist/leaflet.css"/>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.2/dist/css/bootstrap.min.css"/>
+    <link rel="stylesheet" href="https://netdna.bootstrapcdn.com/bootstrap/3.0.0/css/bootstrap-glyphicons.css"/>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.2.0/css/all.min.css"/>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/Leaflet.awesome-markers/2.0.2/leaflet.awesome-markers.css"/>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/python-visualization/folium/folium/templates/leaflet.awesome.rotate.min.css"/>
+    
+            <meta name="viewport" content="width=device-width,
+                initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+            <style>
+                #map_1b9489ceeaa682825151adf6e9294768 {
+                    position: relative;
+                    width: 100.0%;
+                    height: 100.0%;
+                    left: 0.0%;
+                    top: 0.0%;
+                }
+                .leaflet-container { font-size: 1rem; }
+            </style>
+
+            <style>html, body {
+                width: 100%;
+                height: 100%;
+                margin: 0;
+                padding: 0;
+            }
+            </style>
+
+            <style>#map {
+                position:absolute;
+                top:0;
+                bottom:0;
+                right:0;
+                left:0;
+                }
+            </style>
+
+            <script>
+                L_NO_TOUCH = false;
+                L_DISABLE_3D = false;
+            </script>
+
+        
+</head>
+<body>
+    
+    
+            <div class="folium-map" id="map_1b9489ceeaa682825151adf6e9294768" ></div>
+        
+</body>
+<script>
+    
+    
+            var map_1b9489ceeaa682825151adf6e9294768 = L.map(
+                "map_1b9489ceeaa682825151adf6e9294768",
+                {
+                    center: [40.693943, -73.88588],
+                    crs: L.CRS.EPSG3857,
+                    ...{
+  "zoom": 10,
+  "zoomControl": true,
+  "preferCanvas": false,
+  "dragging": false,
+}
+
+                }
+            );
+
+            
+
+        
+    
+            var tile_layer_497cee78c3eeb0879e2b1fe96e1eceb3 = L.tileLayer(
+                "https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png",
+                {
+  "minZoom": 10,
+  "maxZoom": 11,
+  "maxNativeZoom": 11,
+  "noWrap": false,
+  "attribution": "\u0026copy; \u003ca href=\"https://www.openstreetmap.org/copyright\"\u003eOpenStreetMap\u003c/a\u003e contributors \u0026copy; \u003ca href=\"https://carto.com/attributions\"\u003eCARTO\u003c/a\u003e",
+  "subdomains": "abcd",
+  "detectRetina": false,
+  "tms": false,
+  "opacity": 1,
+}
+
+            );
+        
+    
+            tile_layer_497cee78c3eeb0879e2b1fe96e1eceb3.addTo(map_1b9489ceeaa682825151adf6e9294768);
+        
+    
+            var marker_fa975a1ef93bb48ef373ee2d47396353 = L.marker(
+                [40.7831, -73.9712],
+                {
+}
+            ).addTo(map_1b9489ceeaa682825151adf6e9294768);
+        
+    
+            var div_icon_076463a35f51b29feb52f6f8db36bb2d = L.divIcon({
+  "html": "\u003cdiv style=\"font-size:14px; font-weight:bold; color:black\"\u003eManhattan\u003c/div\u003e",
+  "className": "empty",
+});
+        
+    
+                marker_fa975a1ef93bb48ef373ee2d47396353.setIcon(div_icon_076463a35f51b29feb52f6f8db36bb2d);
+            
+    
+            var marker_98c98d9003cfe5d5535a6ba38bb40b42 = L.marker(
+                [40.6782, -73.9442],
+                {
+}
+            ).addTo(map_1b9489ceeaa682825151adf6e9294768);
+        
+    
+            var div_icon_1241d212dce6b30f1384e8bbc657b83b = L.divIcon({
+  "html": "\u003cdiv style=\"font-size:14px; font-weight:bold; color:black\"\u003eBrooklyn\u003c/div\u003e",
+  "className": "empty",
+});
+        
+    
+                marker_98c98d9003cfe5d5535a6ba38bb40b42.setIcon(div_icon_1241d212dce6b30f1384e8bbc657b83b);
+            
+    
+            var marker_c6fd30f48b8a72500e8b6258f233788e = L.marker(
+                [40.7282, -73.7949],
+                {
+}
+            ).addTo(map_1b9489ceeaa682825151adf6e9294768);
+        
+    
+            var div_icon_4233548b2c452128a0a1bb6714d7c9ef = L.divIcon({
+  "html": "\u003cdiv style=\"font-size:14px; font-weight:bold; color:black\"\u003eQueens\u003c/div\u003e",
+  "className": "empty",
+});
+        
+    
+                marker_c6fd30f48b8a72500e8b6258f233788e.setIcon(div_icon_4233548b2c452128a0a1bb6714d7c9ef);
+            
+    
+            var marker_ef2eef9a80e2150cb20e18a07ab81965 = L.marker(
+                [40.8448, -73.8648],
+                {
+}
+            ).addTo(map_1b9489ceeaa682825151adf6e9294768);
+        
+    
+            var div_icon_d93d7fe0994d13c691e19840362104c7 = L.divIcon({
+  "html": "\u003cdiv style=\"font-size:14px; font-weight:bold; color:black\"\u003eThe Bronx\u003c/div\u003e",
+  "className": "empty",
+});
+        
+    
+                marker_ef2eef9a80e2150cb20e18a07ab81965.setIcon(div_icon_d93d7fe0994d13c691e19840362104c7);
+            
+    
+            var marker_284aa98c86767da135cd2c6c3391df81 = L.marker(
+                [40.5795, -74.1502],
+                {
+}
+            ).addTo(map_1b9489ceeaa682825151adf6e9294768);
+        
+    
+            var div_icon_0241ad4c19845afe585a6571cd1deff1 = L.divIcon({
+  "html": "\u003cdiv style=\"font-size:14px; font-weight:bold; color:black\"\u003eStaten Island\u003c/div\u003e",
+  "className": "empty",
+});
+        
+    
+                marker_284aa98c86767da135cd2c6c3391df81.setIcon(div_icon_0241ad4c19845afe585a6571cd1deff1);
+            
+</script>
+</html>
