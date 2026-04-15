@@ -3,6 +3,7 @@ import folium
 import json
 import os
 import branca
+import numpy as np
 from flask import Flask, render_template
 
 base_dir = os.path.abspath(os.path.dirname(__file__))
@@ -19,88 +20,99 @@ def run_data_pipeline():
     
     inc = pd.read_csv(INCOME_DATA, skiprows=[1])
     inc['median_income'] = pd.to_numeric(inc['S1901_C01_012E'].astype(str).str.replace(',', '').str.replace('+', ''), errors='coerce')
-    inc['zip'] = inc['GEO_ID'].str.split('US').str[-1]
+    inc['zip'] = inc['GEO_ID'].str.split('US').str[-1].str.strip()
     
     trees = pd.read_csv(TREE_DATA)
     trees = trees[trees['status'] == 'Alive'].copy()
     trees['h_num'] = trees['health'].map({'Good': 3, 'Fair': 2, 'Poor': 1})
     trees['postcode'] = trees['postcode'].astype(str).str.strip()
 
-    CITY_AVG_HEALTH = trees['h_num'].mean()
-    zip_tree_counts = trees.groupby('postcode').size().reset_index(name='total_zip_trees')
+    def standardize_tract(val):
+        try:
+            s = str(int(float(val)))
+            if len(s) <= 4: return s.zfill(4) + "00"
+            return s.zfill(6)
+        except: return "000000"
 
+    trees['CT_Standard'] = trees['census tract'].apply(standardize_tract)
     nta_map = pd.read_csv(NTA_MAPPING)
-    def norm(v): 
-        try: return str(int(float(str(v).replace(',', ''))))
-        except: return None
-    trees['CT_Norm'] = trees['census tract'].apply(norm)
-    nta_map['CT_Norm'] = nta_map['CT2020'].apply(norm)
+    nta_map['CT_Standard'] = nta_map['CT2020'].apply(standardize_tract)
 
-    merged = trees.merge(nta_map[['CT_Norm', 'NTACode', 'BoroName']], on='CT_Norm')
+    merged = trees.merge(nta_map[['CT_Standard', 'NTACode', 'NTAName', 'BoroName']], on='CT_Standard')
     merged = merged.merge(inc[['zip', 'median_income']], left_on='postcode', right_on='zip')
-    merged = merged.merge(zip_tree_counts, left_on='postcode', right_on='postcode')
 
-    # Tree Mix (Top 10 species >= 2.5%)
+    zip_tree_counts = trees.groupby('postcode').size().reset_index(name='total_zip_trees')
+    merged = merged.merge(zip_tree_counts, on='postcode')
+
+    CITY_AVG_HEALTH = merged['h_num'].mean()
+
+    # Calculate Local Correlation
+    def calc_local_corr(group):
+        if len(group) < 10 or group['median_income'].nunique() <= 1: return 0.0
+        c = group['median_income'].corr(group['h_num'])
+        return c if not np.isnan(c) else 0.0
+
+    nta_corrs = merged.groupby('NTACode').apply(calc_local_corr, include_groups=False).reset_index(name='NTA_Correlation')
+
+    # Tree Mix and Percentages
     species_counts = merged.groupby(['NTACode', 'spc_common']).size().reset_index(name='count')
     total_counts = merged.groupby('NTACode').size().reset_index(name='total')
-    species_pct = species_counts.merge(total_counts, on='NTACode')
-    species_pct['pct'] = (species_pct['count'] / species_pct['total'] * 100).round(1)
+    species_data = species_counts.merge(total_counts, on='NTACode')
+    species_data['pct'] = (species_data['count'] / species_data['total'] * 100).round(1)
     
+    # Format Top 10 Mix
     def get_top_species(group):
-        top = group[group['pct'] >= 2.5].sort_values(by='pct', ascending=False).head(10)
-        return "".join([f"<p style='margin:2px 0;'>• <b>{str(row['spc_common']).title()}</b> ({row['pct']}% of neighborhood trees)</p>" for _, row in top.iterrows()])
+        top = group[group['pct'] >= 1.0].sort_values(by='pct', ascending=False).head(10)
+        return "".join([f"<p style='margin:2px 0;'>• <b>{str(row['spc_common']).title()}</b> ({row['pct']}%)</p>" for _, row in top.iterrows()])
     
-    species_info = species_pct.groupby('NTACode').apply(get_top_species, include_groups=False).reset_index(name='tree_list')
+    species_info = species_data.groupby('NTACode').apply(get_top_species, include_groups=False).reset_index(name='tree_list')
 
-    # Aggregated Stats for Correlation
-    stats = merged.groupby(['NTACode', 'BoroName'], as_index=False).agg(
-        avg_i=('median_income', 'mean'),
-        avg_h=('h_num', 'mean'),
-        zip_total=('total_zip_trees', 'first')
-    )
-    
-    boros = stats.groupby('BoroName').apply(lambda x: x['avg_i'].corr(x['avg_h']) if len(x) > 1 else 0, include_groups=False).reset_index()
-    boros.columns = ['BoroName', 'Boro_Correlation']
-    final_stats = stats.merge(boros, on='BoroName')
-
-    # --- DYNAMIC ADVICE WITH CORRELATION ---
+    # --- DYNAMIC RESILIENCE ---
+    # Merge pct data into health stats so we can show it in the advice section
     health_stats = merged.groupby(['NTACode', 'spc_common']).agg(
-        avg_health=('h_num', 'mean'),
+        avg_health=('h_num', 'mean'), 
         sample_size=('h_num', 'count')
     ).reset_index()
     
-    resilient_species = health_stats[health_stats['sample_size'] >= 10]
+    # Combine health data with the percentage data calculated above
+    health_with_pct = health_stats.merge(species_data[['NTACode', 'spc_common', 'pct']], on=['NTACode', 'spc_common'])
     
-    # We merge the correlation back into health_stats so the group has access to it
-    resilient_species = resilient_species.merge(boros, left_on=resilient_species['NTACode'].map(final_stats.set_index('NTACode')['BoroName']), right_on='BoroName')
+    resilient_species = health_with_pct[health_with_pct['sample_size'] >= 5].merge(nta_corrs, on='NTACode')
 
     def get_resilience_advice(group, city_avg):
         avg_h = group['avg_health'].mean()
         status = "Non-vulnerable" if avg_h >= city_avg else "Vulnerable"
-        # Access the correlation value from the first row of the group
-        corr_val = round(group['Boro_Correlation'].iloc[0], 3)
+        corr_val = round(group['NTA_Correlation'].iloc[0], 3)
         
+        # Sort by health rating to find the "thriving" ones
         best_trees = group.sort_values(by='avg_health', ascending=False).head(3)
-        advice_list = "".join([f"<p style='margin:2px 0;'>• <b>{str(row['spc_common']).title()}</b> (High local health rating)</p>" for _, row in best_trees.iterrows()])
         
-        summary = f"This zip code is classified as <b>{status} ({corr_val})</b> based on average canopy health.<br><br><b>Least vulnerable species in this area:</b><br>{advice_list}"
-        return summary
+        # ADDED PERCENTAGE TO THRIIVING SPECIES
+        advice_list = "".join([f"<p style='margin:2px 0;'>• <b>{str(row['spc_common']).title()}</b> ({row['pct']}%)</p>" for _, row in best_trees.iterrows()])
+        
+        return f"This neighborhood is classified as <b>{status} ({corr_val})</b>.<br><br><b>Thriving local species:</b>{advice_list}"
 
     resilience_info = resilient_species.groupby('NTACode').apply(get_resilience_advice, city_avg=CITY_AVG_HEALTH, include_groups=False).reset_index(name='dynamic_rx')
 
-    h_min, h_max = final_stats['avg_h'].min(), final_stats['avg_h'].max()
-    final_stats['color_score'] = (final_stats['avg_h'] - h_min) / (h_max - h_min) - 0.5
-
-    final = final_stats.merge(species_info, on='NTACode', how='left')
+    # Aggregating final table
+    final_stats = merged.groupby('NTACode', as_index=False).agg({
+        'NTAName': 'first',
+        'BoroName': 'first',
+        'total_zip_trees': 'mean'
+    })
+    
+    final = final_stats.merge(nta_corrs, on='NTACode', how='left')
+    final = final.merge(species_info, on='NTACode', how='left')
     final = final.merge(resilience_info, on='NTACode', how='left')
-    final['dynamic_rx'] = final['dynamic_rx'].fillna("This neighborhood has high species diversity, but no single species met the minimum sample size (10 trees) for a reliable resilience rating.")
-    final['NTACode'] = final['NTACode'].astype(str).str.strip()
+    
+    final['dynamic_rx'] = final['dynamic_rx'].fillna("High diversity area. See mix above.")
+    final = final.drop_duplicates(subset=['NTACode'])
+    
     return final
 
 # --- 2. MAP GENERATION ---
 def create_map(df):
     m = folium.Map(location=[40.7128, -73.9352], zoom_start=11, tiles="CartoDB positron")
-
     geojson_path = os.path.join(base_dir, 'data', '2020_Neighborhood_Tabulation_Areas_(NTAs)_20260414.geojson')
     with open(geojson_path, 'r') as f:
         nyc_geojson = json.load(f)
@@ -110,20 +122,18 @@ def create_map(df):
     colormap = branca.colormap.LinearColormap(
         colors=['#d73027', '#f46d43', '#fee08b', '#d9ef8b', '#66bd63', '#1a9850'],
         vmin=-0.5, vmax=0.5,
-        caption='Income-Tree Health Correlation (Red=Low Link, Green=High Link)'
+        caption='Neighborhood Correlation (Income vs. Tree Health)'
     )
     
-    # More robust CSS targeting for the legend background
     legend_css = """
     <style>
         .leaflet-control.branca-legend { 
             background: white !important; 
             padding: 10px !important; 
-            border: 2px solid #555 !important; 
+            border: 2px solid #333 !important; 
             border-radius: 8px !important;
-            box-shadow: 2px 2px 6px rgba(0,0,0,0.3) !important;
+            box-shadow: 0 0 10px rgba(0,0,0,0.2);
         }
-        svg.leaflet-control { background: white !important; }
     </style>
     """
     m.get_root().header.add_child(folium.Element(legend_css))
@@ -132,68 +142,47 @@ def create_map(df):
     for feature in nyc_geojson['features']:
         feature['properties'] = {k.replace(':', ''): v for k, v in feature['properties'].items()}
         nta_id = feature['properties'].get('nta2020')
-        feature_data = data_dict.get(nta_id)
+        f_data = data_dict.get(nta_id)
         
-        if feature_data:
-            corr = round(feature_data.get('Boro_Correlation', 0), 3)
-            feature['properties']['viz_score'] = feature_data.get('color_score', 0)
-            feature['properties']['trees'] = feature_data.get('tree_list', "No data.")
-            feature['properties']['zip_total'] = int(feature_data.get('zip_total', 0))
-            feature['properties']['rx'] = feature_data.get('dynamic_rx', "Insufficient data for resilience analysis.")
+        if f_data:
+            local_corr = f_data.get('NTA_Correlation', 0)
+            feature['properties']['viz_val'] = local_corr
+            feature['properties']['trees'] = f_data.get('tree_list', "No data.")
+            feature['properties']['zip_total'] = int(f_data.get('total_zip_trees', 0))
+            feature['properties']['rx'] = f_data.get('dynamic_rx')
             feature['properties']['has_data'] = True
-            feature['properties']['hover_info'] = f"<strong>{feature['properties']['ntaname']}</strong><br>Correlation: {corr}"
+            feature['properties']['hover'] = f"<strong>{f_data['NTAName']}</strong><br>Correlation: {round(local_corr, 3)}"
         else:
             feature['properties']['has_data'] = False
-            feature['properties']['viz_score'] = None
-            feature['properties']['hover_info'] = f"<strong>{feature['properties']['ntaname']}</strong><br>No Data"
+            feature['properties']['viz_val'] = None
+            feature['properties']['hover'] = f"<strong>{feature['properties'].get('ntaname')}</strong> (No Data)"
 
     def style_fn(f):
         return {
-            'fillColor': colormap(f['properties']['viz_score']) if f['properties']['has_data'] else '#D3D3D3',
+            'fillColor': colormap(f['properties']['viz_val']) if f['properties']['has_data'] else '#eeeeee',
             'color': 'white', 'weight': 1, 'fillOpacity': 0.7
         }
 
     for feature in nyc_geojson['features']:
-        section_style = "font-size: 11px; background: #f2f2f2; padding: 10px; border-radius: 4px; border: 1px solid #ddd; margin-bottom: 12px; line-height: 1.4;"
-        
+        box = "font-size: 11px; background: #f8f9fa; padding: 10px; border-radius: 4px; border: 1px solid #ddd; margin-bottom: 12px;"
         popup_html = f"""
-        <div style="font-family: Arial; width: 250px;">
-            <h3 style="margin: 0 0 5px 0; font-size: 16px;"><b>{feature['properties']['ntaname']}</b></h3>
-            <p style="margin: 0 0 10px 0; font-size: 12px; color: #666; border-bottom: 2px solid #333; padding-bottom: 5px;">
-                Total trees in this zip code: <b>{feature['properties'].get('zip_total', 'N/A')}</b>
+        <div style="font-family: sans-serif; width: 250px;">
+            <h3 style="margin: 0;"><b>{feature['properties'].get('ntaname')}</b></h3>
+            <p style="font-size: 11px; color: #666; border-bottom: 1px solid #ccc; padding-bottom: 5px; margin-bottom: 10px;">
+                Trees in this area: <b>{feature['properties'].get('zip_total', 'N/A')}</b>
             </p>
-            <p style="margin: 0 5px 3px 5px; font-weight: bold; color: #444; font-size: 12px;">Current Tree Mix</p>
-            <div style="{section_style}">{feature['properties'].get('trees', 'N/A')}</div>
-            <p style="margin: 0 5px 3px 5px; font-weight: bold; color: #444; font-size: 12px;">Resilience & Advice</p>
-            <div style="{section_style}">{feature['properties'].get('rx', 'N/A')}</div>
+            <p style="font-weight: bold; margin: 0 0 4px 0; font-size: 12px;">Neighborhood Tree Mix</p>
+            <div style="{box}">{feature['properties'].get('trees')}</div>
+            <p style="font-weight: bold; margin: 0 0 4px 0; font-size: 12px;">Resilience & Analysis</p>
+            <div style="{box}">{feature['properties'].get('rx')}</div>
         </div>
         """
         folium.GeoJson(
-            feature,
-            style_function=style_fn,
-            tooltip=folium.Tooltip(feature['properties']['hover_info']),
-            popup=folium.Popup(popup_html, max_width=270)
+            feature, style_function=style_fn,
+            tooltip=folium.Tooltip(feature['properties']['hover']),
+            popup=folium.Popup(popup_html, max_width=280)
         ).add_to(m)
 
-    # Info Box (Interpret Data)
-    info_html = """
-    <div style="position: fixed; bottom: 30px; left: 30px; width: 280px; 
-    background-color: white; border:2px solid #555; z-index:9999; font-size:13px;
-    padding: 12px; border-radius: 8px; box-shadow: 2px 2px 10px rgba(0,0,0,0.2);">
-        <details>
-            <summary style="font-weight: bold; cursor: pointer; list-style: none; display: flex; justify-content: space-between;">
-                How to interpret the data? <span style="font-size: 14px;">➕</span>
-            </summary>
-            <div style="margin-top: 10px; border-top: 1px solid #ccc; padding-top: 10px;">
-                <b>Color Gradient:</b> Relationship between income and tree health.<br><br>
-                <b>Green:</b> Stronger link between wealth and health.<br>
-                <b>Red:</b> Weaker link between wealth and health.<br><br>
-                <i>Parenthesis in Advice: Shows specific borough correlation value.</i>
-            </div>
-        </details>
-    </div>
-    """
-    m.get_root().html.add_child(folium.Element(info_html))
     m.save(os.path.join(template_dir, "index.html"))
 
 @app.route('/')
