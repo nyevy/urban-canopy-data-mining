@@ -46,7 +46,6 @@ def run_data_pipeline():
 
     CITY_AVG_HEALTH = merged['h_num'].mean()
 
-    # Calculate Local Correlation
     def calc_local_corr(group):
         if len(group) < 10 or group['median_income'].nunique() <= 1: return 0.0
         c = group['median_income'].corr(group['h_num'])
@@ -54,47 +53,31 @@ def run_data_pipeline():
 
     nta_corrs = merged.groupby('NTACode').apply(calc_local_corr, include_groups=False).reset_index(name='NTA_Correlation')
 
-    # Tree Mix and Percentages
     species_counts = merged.groupby(['NTACode', 'spc_common']).size().reset_index(name='count')
     total_counts = merged.groupby('NTACode').size().reset_index(name='total')
     species_data = species_counts.merge(total_counts, on='NTACode')
     species_data['pct'] = (species_data['count'] / species_data['total'] * 100).round(1)
     
-    # Format Top 10 Mix
     def get_top_species(group):
         top = group[group['pct'] >= 1.0].sort_values(by='pct', ascending=False).head(10)
         return "".join([f"<p style='margin:2px 0;'>• <b>{str(row['spc_common']).title()}</b> ({row['pct']}%)</p>" for _, row in top.iterrows()])
     
     species_info = species_data.groupby('NTACode').apply(get_top_species, include_groups=False).reset_index(name='tree_list')
 
-    # --- DYNAMIC RESILIENCE ---
-    # Merge pct data into health stats so we can show it in the advice section
-    health_stats = merged.groupby(['NTACode', 'spc_common']).agg(
-        avg_health=('h_num', 'mean'), 
-        sample_size=('h_num', 'count')
-    ).reset_index()
-    
-    # Combine health data with the percentage data calculated above
+    health_stats = merged.groupby(['NTACode', 'spc_common']).agg(avg_health=('h_num', 'mean'), sample_size=('h_num', 'count')).reset_index()
     health_with_pct = health_stats.merge(species_data[['NTACode', 'spc_common', 'pct']], on=['NTACode', 'spc_common'])
-    
     resilient_species = health_with_pct[health_with_pct['sample_size'] >= 5].merge(nta_corrs, on='NTACode')
 
     def get_resilience_advice(group, city_avg):
         avg_h = group['avg_health'].mean()
         status = "Non-vulnerable" if avg_h >= city_avg else "Vulnerable"
         corr_val = round(group['NTA_Correlation'].iloc[0], 3)
-        
-        # Sort by health rating to find the "thriving" ones
         best_trees = group.sort_values(by='avg_health', ascending=False).head(3)
-        
-        # ADDED PERCENTAGE TO THRIIVING SPECIES
         advice_list = "".join([f"<p style='margin:2px 0;'>• <b>{str(row['spc_common']).title()}</b> ({row['pct']}%)</p>" for _, row in best_trees.iterrows()])
-        
-        return f"This neighborhood is classified as <b>{status} ({corr_val})</b>.<br><br><b>Thriving local species:</b>{advice_list}"
+        return f"This neighborhood is classified as <b>{status} (Correlation of {corr_val})</b>.<br><br><b>Thriving local species:</b>{advice_list}"
 
     resilience_info = resilient_species.groupby('NTACode').apply(get_resilience_advice, city_avg=CITY_AVG_HEALTH, include_groups=False).reset_index(name='dynamic_rx')
 
-    # Aggregating final table
     final_stats = merged.groupby('NTACode', as_index=False).agg({
         'NTAName': 'first',
         'BoroName': 'first',
@@ -104,7 +87,6 @@ def run_data_pipeline():
     final = final_stats.merge(nta_corrs, on='NTACode', how='left')
     final = final.merge(species_info, on='NTACode', how='left')
     final = final.merge(resilience_info, on='NTACode', how='left')
-    
     final['dynamic_rx'] = final['dynamic_rx'].fillna("High diversity area. See mix above.")
     final = final.drop_duplicates(subset=['NTACode'])
     
@@ -119,10 +101,11 @@ def create_map(df):
 
     data_dict = df.set_index('NTACode').to_dict('index')
 
+    # INVERTED COLORS: Green for 0/Negative (Equality), Red for High Positive (Vulnerability)
     colormap = branca.colormap.LinearColormap(
-        colors=['#d73027', '#f46d43', '#fee08b', '#d9ef8b', '#66bd63', '#1a9850'],
+        colors=['#1a9850', '#66bd63', '#d9ef8b', '#fee08b', '#f46d43', '#d73027'],
         vmin=-0.5, vmax=0.5,
-        caption='Neighborhood Correlation (Income vs. Tree Health)'
+        caption='Neighborhood Vulnerability (High = Health relies on Wealth)'
     )
     
     legend_css = """
@@ -151,7 +134,7 @@ def create_map(df):
             feature['properties']['zip_total'] = int(f_data.get('total_zip_trees', 0))
             feature['properties']['rx'] = f_data.get('dynamic_rx')
             feature['properties']['has_data'] = True
-            feature['properties']['hover'] = f"<strong>{f_data['NTAName']}</strong><br>Correlation: {round(local_corr, 3)}"
+            feature['properties']['hover'] = f"<strong>{f_data['NTAName']}</strong><br>Vulnerability Score: {round(local_corr, 3)}"
         else:
             feature['properties']['has_data'] = False
             feature['properties']['viz_val'] = None
@@ -172,9 +155,9 @@ def create_map(df):
                 Trees in this area: <b>{feature['properties'].get('zip_total', 'N/A')}</b>
             </p>
             <p style="font-weight: bold; margin: 0 0 4px 0; font-size: 12px;">Neighborhood Tree Mix</p>
-            <div style="{box}">{feature['properties'].get('trees')}</div>
+            <div style="{box}">{feature['properties'].get('trees', 'N/A')}</div>
             <p style="font-weight: bold; margin: 0 0 4px 0; font-size: 12px;">Resilience & Analysis</p>
-            <div style="{box}">{feature['properties'].get('rx')}</div>
+            <div style="{box}">{feature['properties'].get('rx', 'N/A')}</div>
         </div>
         """
         folium.GeoJson(
